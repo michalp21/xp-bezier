@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected Segments Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #000000;
+            overflow: hidden;
+        }
+        #canvas-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            position: relative;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        label {
+            font-weight: bold;
+            min-width: 50px;
+            color: white;
+        }
+        input[type="range"] {
+            width: 150px;
+        }
+        .value-display {
+            min-width: 35px;
+            text-align: center;
+            font-weight: bold;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <div id="controls">
+            <div class="control-row">
+                <label>Speed:</label>
+                <input type="range" id="speed-slider" min="1" max="6" step="0.1" value="4">
+                <span class="value-display" id="speed-value">4.0</span>
+            </div>
+            <div class="control-row">
+                <label>Anchors:</label>
+                <input type="range" id="anchors-slider" min="3" max="8" step="1" value="4">
+                <span class="value-display" id="anchors-value">4</span>
+            </div>
+            <div class="control-row">
+                <label>Ghosts:</label>
+                <input type="range" id="ghosts-slider" min="0" max="20" step="1" value="10">
+                <span class="value-display" id="ghosts-value">10</span>
+            </div>
+            <div class="control-row">
+                <label>Bezier:</label>
+                <input type="checkbox" id="bezier-checkbox">
+            </div>
+            <div class="control-row">
+                <label>Show Points:</label>
+                <input type="checkbox" id="show-points-checkbox">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let anchors = [];
+        let controlPoints = []; // For bezier mode
+        let numAnchors = 4;
+        let numGhosts = 10;
+        let speedMultiplier = 4;
+        let bezierMode = false;
+        let showPoints = false;
+        let ghostTrails = []; // Store positions for ghost trails
+        
+        class Joint {
+            constructor(x, y, isControl = false) {
+                this.pos = createVector(x, y);
+                this.isControl = isControl; // Control points move, anchor points are calculated
+                // Create random direction and normalize to same speed
+                let randomVel = createVector(random(-1, 1), random(-1, 1));
+                randomVel.normalize();
+                randomVel.mult(2); // Set base speed to 2
+                this.vel = randomVel;
+                this.acc = createVector(0, 0);
+                this.maxSpeed = 3;
+                this.maxForce = 0.1;
+            }
+            
+            update() {
+                // Only update control points in bezier mode, or all points in normal mode
+                if (bezierMode && !this.isControl) {
+                    return; // Anchor points are calculated, not updated
+                }
+                
+                // Update physics with speed multiplier
+                let vel = p5.Vector.mult(this.vel, speedMultiplier);
+                this.pos.add(vel);
+                
+                // Store position history for ghosts
+                if (!this.history) this.history = [];
+                this.history.push(this.pos.copy());
+                
+                // Keep history limited to max ghosts * delay amount
+                let maxHistory = numGhosts * 2;
+                if (this.history.length > maxHistory) {
+                    this.history.shift();
+                }
+                
+                // Bounce off edges
+                if (this.pos.x < 0 || this.pos.x > width) {
+                    this.vel.x *= -1;
+                    this.pos.x = constrain(this.pos.x, 0, width);
+                }
+                if (this.pos.y < 0 || this.pos.y > height) {
+                    this.vel.y *= -1;
+                    this.pos.y = constrain(this.pos.y, 0, height);
+                }
+            }
+            
+            applyForce(force) {
+                this.acc.add(force);
+            }
+            
+            display() {
+                // Joints are invisible
+            }
+        }
+        
+        function setup() {
+            let canvas = createCanvas(windowWidth * 0.75, windowHeight * 0.75);
+            canvas.parent('canvas-container');
+            
+            // Create anchors in a circle formation
+            let centerX = width / 2;
+            let centerY = height / 2;
+            let radius = 150;
+            
+            for (let i = 0; i < numAnchors; i++) {
+                let angle = (TWO_PI / numAnchors) * i;
+                let x = centerX + cos(angle) * radius;
+                let y = centerY + sin(angle) * radius;
+                anchors.push(new Joint(x, y));
+            }
+            
+            // Speed slider setup
+            let speedSlider = select('#speed-slider');
+            let speedValue = select('#speed-value');
+            speedSlider.value(speedMultiplier);
+            speedValue.html(speedMultiplier.toFixed(1));
+            
+            speedSlider.input(() => {
+                speedMultiplier = parseFloat(speedSlider.value());
+                speedValue.html(speedMultiplier.toFixed(1));
+            });
+            
+            // Ghosts slider setup
+            let ghostsSlider = select('#ghosts-slider');
+            let ghostsValue = select('#ghosts-value');
+            ghostsSlider.value(numGhosts);
+            ghostsValue.html(numGhosts);
+            
+            ghostsSlider.input(() => {
+                let newNumGhosts = parseInt(ghostsSlider.value());
+                ghostsValue.html(newNumGhosts);
+                
+                // Only remove excess ghosts if decreasing
+                if (newNumGhosts < numGhosts) {
+                    // Trim history to match new ghost count
+                    let maxHistory = newNumGhosts * 2;
+                    for (let anchor of anchors) {
+                        if (anchor.history && anchor.history.length > maxHistory) {
+                            anchor.history = anchor.history.slice(-maxHistory);
+                        }
+                    }
+                    for (let cp of controlPoints) {
+                        if (cp.history && cp.history.length > maxHistory) {
+                            cp.history = cp.history.slice(-maxHistory);
+                        }
+                    }
+                }
+                
+                numGhosts = newNumGhosts;
+            });
+            
+            // Bezier checkbox setup
+            let bezierCheckbox = select('#bezier-checkbox');
+            bezierCheckbox.elt.checked = bezierMode;
+            bezierCheckbox.changed(() => {
+                bezierMode = bezierCheckbox.checked();
+                if (bezierMode) {
+                    setupBezierMode();
+                } else {
+                    // Return to normal mode
+                    recreateAnchors();
+                }
+            });
+            
+            // Show points checkbox setup
+            let showPointsCheckbox = select('#show-points-checkbox');
+            showPointsCheckbox.elt.checked = showPoints;
+            showPointsCheckbox.changed(() => {
+                showPoints = showPointsCheckbox.checked();
+            });
+            
+            // Anchors slider setup
+            let anchorsSlider = select('#anchors-slider');
+            let anchorsValue = select('#anchors-value');
+            anchorsSlider.value(numAnchors);
+            anchorsValue.html(numAnchors);
+            
+            anchorsSlider.input(() => {
+                numAnchors = parseInt(anchorsSlider.value());
+                anchorsValue.html(numAnchors);
+                if (bezierMode) {
+                    setupBezierMode();
+                } else {
+                    recreateAnchors();
+                }
+            });
+        }
+        
+        function recreateAnchors() {
+            anchors = [];
+            let centerX = width / 2;
+            let centerY = height / 2;
+            let radius = 150;
+            
+            for (let i = 0; i < numAnchors; i++) {
+                let angle = (TWO_PI / numAnchors) * i;
+                let x = centerX + cos(angle) * radius;
+                let y = centerY + sin(angle) * radius;
+                anchors.push(new Joint(x, y, false));
+            }
+        }
+        
+        function setupBezierMode() {
+            // In bezier mode, we need control points that move
+            // For numAnchors curves, we need numAnchors*2 control points
+            // Each curve has 4 points: anchor1, control1, control2, anchor2
+            // Adjacent curves share anchors
+            controlPoints = [];
+            let centerX = width / 2;
+            let centerY = height / 2;
+            let radius = 150;
+            
+            // Create control points (2 per curve segment)
+            for (let i = 0; i < numAnchors * 2; i++) {
+                let angle = (TWO_PI / (numAnchors * 2)) * i;
+                let r = (i % 2 === 0) ? radius : radius * 0.7; // Alternate radius
+                let x = centerX + cos(angle) * r;
+                let y = centerY + sin(angle) * r;
+                controlPoints.push(new Joint(x, y, true));
+            }
+        }
+        
+        function updateBezierAnchors() {
+            // Calculate anchor points as midpoints between control points
+            // This ensures smooth continuity
+            let anchors = [];
+            for (let i = 0; i < controlPoints.length; i += 2) {
+                let cp1 = controlPoints[i];
+                let cp2 = controlPoints[(i + 1) % controlPoints.length];
+                let anchor = p5.Vector.add(cp1.pos, cp2.pos).div(2);
+                anchors.push(anchor);
+            }
+            return anchors;
+        }
+        
+        function drawBezierCurve() {
+            let anchors = updateBezierAnchors();
+            
+            stroke(211, 7, 252);
+            strokeWeight(2.5);
+            noFill();
+            beginShape();
+            
+            // Start at first anchor
+            vertex(anchors[0].x, anchors[0].y);
+            
+            // Draw bezier curves
+            for (let i = 0; i < numAnchors; i++) {
+                let cp1Index = i * 2 + 1;
+                let cp2Index = (i * 2 + 2) % controlPoints.length;
+                let anchorIndex = (i + 1) % numAnchors;
+                
+                let cp1 = controlPoints[cp1Index].pos;
+                let cp2 = controlPoints[cp2Index].pos;
+                let anchor = anchors[anchorIndex];
+                
+                bezierVertex(cp1.x, cp1.y, cp2.x, cp2.y, anchor.x, anchor.y);
+            }
+            
+            endShape();
+        }
+        
+        function drawControlPoints() {
+            // Draw control points as small red circles
+            fill(255, 100, 100);
+            noStroke();
+            for (let cp of controlPoints) {
+                circle(cp.pos.x, cp.pos.y, 8);
+            }
+            
+            // Draw anchor points as small blue circles
+            let anchors = updateBezierAnchors();
+            fill(100, 100, 255);
+            for (let anchor of anchors) {
+                circle(anchor.x, anchor.y, 8);
+            }
+        }
+        
+        function drawBezierGhosts() {
+            // Draw ghost trails for bezier mode
+            for (let g = 0; g < numGhosts; g++) {
+                let ghostAlpha = map(g, 0, numGhosts, 180, 60);
+                stroke(211, 7, 252, ghostAlpha);
+                strokeWeight(2);
+                noFill();
+                
+                let delay = (g + 1) * 2;
+                
+                // Calculate ghost anchors from history
+                let ghostAnchors = [];
+                for (let i = 0; i < controlPoints.length; i += 2) {
+                    let cp1 = controlPoints[i];
+                    let cp2 = controlPoints[(i + 1) % controlPoints.length];
+                    
+                    if (cp1.history && cp1.history.length > delay && 
+                        cp2.history && cp2.history.length > delay) {
+                        let ghostPos1 = cp1.history[cp1.history.length - delay - 1];
+                        let ghostPos2 = cp2.history[cp2.history.length - delay - 1];
+                        let ghostAnchor = p5.Vector.add(ghostPos1, ghostPos2).div(2);
+                        ghostAnchors.push(ghostPos1);
+                        ghostAnchors.push(ghostPos2);
+                        ghostAnchors.push(ghostAnchor);
+                    } else {
+                        return; // Not enough history yet
+                    }
+                }
+                
+                if (ghostAnchors.length < 3) return;
+                
+                beginShape();
+                vertex(ghostAnchors[2].x, ghostAnchors[2].y);
+                
+                for (let i = 0; i < numAnchors; i++) {
+                    let cp1Index = i * 3 + 1;
+                    let cp2Index = ((i + 1) * 3) % ghostAnchors.length;
+                    let anchorIndex = ((i + 1) * 3 + 2) % ghostAnchors.length;
+                    
+                    bezierVertex(
+                        ghostAnchors[cp1Index].x, ghostAnchors[cp1Index].y,
+                        ghostAnchors[cp2Index].x, ghostAnchors[cp2Index].y,
+                        ghostAnchors[anchorIndex].x, ghostAnchors[anchorIndex].y
+                    );
+                }
+                
+                endShape();
+            }
+        }
+        
+        function draw() {
+            background(0);
+            
+            if (bezierMode) {
+                // Update control points
+                for (let cp of controlPoints) {
+                    cp.update();
+                }
+                
+                // Draw ghosts first
+                if (numGhosts > 0) {
+                    drawBezierGhosts();
+                }
+                
+                // Draw main bezier curve
+                drawBezierCurve();
+                
+                // Draw control points if enabled
+                if (showPoints) {
+                    drawControlPoints();
+                }
+            } else {
+                // Normal mode
+                // Update and display anchors
+                for (let anchor of anchors) {
+                    anchor.update();
+                }
+                
+                // Draw ghost trails first (behind main segments)
+                for (let g = 0; g < numGhosts; g++) {
+                    let ghostAlpha = map(g, 0, numGhosts, 180, 60);
+                    stroke(211, 7, 252, ghostAlpha);
+                    strokeWeight(2);
+                    noFill();
+                    beginShape();
+                    
+                    let delay = (g + 1) * 2;
+                    for (let anchor of anchors) {
+                        if (anchor.history && anchor.history.length > delay) {
+                            let ghostPos = anchor.history[anchor.history.length - delay - 1];
+                            vertex(ghostPos.x, ghostPos.y);
+                        }
+                    }
+                    endShape(CLOSE);
+                }
+                
+                // Draw main segments
+                stroke(211, 7, 252);
+                strokeWeight(2.5);
+                noFill();
+                beginShape();
+                for (let anchor of anchors) {
+                    vertex(anchor.pos.x, anchor.pos.y);
+                }
+                endShape(CLOSE);
+                
+                // Display anchors on top (anchors are invisible)
+                for (let anchor of anchors) {
+                    anchor.display();
+                }
+            }
+            
+            // No info text needed - sliders show the values
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth * 0.75, windowHeight * 0.75);
+        }
+    </script>
+</body>
+</html>
