@@ -94,8 +94,8 @@
                 this.pos = createVector(x, y);
                 this.isControl = isControl; // Control points move, anchor points are calculated
                 // Create random direction and normalize to same speed
-                let randomVel = createVector(random(-1, 1), random(-1, 1));
-                randomVel.normalize();
+                let randomAngle = random(TWO_PI);
+                let randomVel = createVector(cos(randomAngle), sin(randomAngle));
                 randomVel.mult(2); // Set base speed to 2
                 this.vel = randomVel;
                 this.acc = createVector(0, 0);
@@ -151,15 +151,10 @@
             if (bezierMode) {
                 setupBezierMode();
             } else {
-                // Create anchors in a circle formation
-                let centerX = width / 2;
-                let centerY = height / 2;
-                let radius = 150;
-                
+                // Create anchors in random positions
                 for (let i = 0; i < numAnchors; i++) {
-                    let angle = (TWO_PI / numAnchors) * i;
-                    let x = centerX + cos(angle) * radius;
-                    let y = centerY + sin(angle) * radius;
+                    let x = random(width * 0.2, width * 0.8);
+                    let y = random(height * 0.2, height * 0.8);
                     anchors.push(new Joint(x, y));
                 }
             }
@@ -243,14 +238,10 @@
         
         function recreateAnchors() {
             anchors = [];
-            let centerX = width / 2;
-            let centerY = height / 2;
-            let radius = 150;
-            
+
             for (let i = 0; i < numAnchors; i++) {
-                let angle = (TWO_PI / numAnchors) * i;
-                let x = centerX + cos(angle) * radius;
-                let y = centerY + sin(angle) * radius;
+                let x = random(width * 0.2, width * 0.8);
+                let y = random(height * 0.2, height * 0.8);
                 anchors.push(new Joint(x, y, false));
             }
         }
@@ -261,16 +252,11 @@
             // Each curve has 4 points: anchor1, control1, control2, anchor2
             // Adjacent curves share anchors
             controlPoints = [];
-            let centerX = width / 2;
-            let centerY = height / 2;
-            let radius = 150;
-            
-            // Create control points (2 per curve segment)
+
+            // Create control points (2 per curve segment) in random positions
             for (let i = 0; i < numAnchors * 2; i++) {
-                let angle = (TWO_PI / (numAnchors * 2)) * i;
-                let r = (i % 2 === 0) ? radius : radius * 0.7; // Alternate radius
-                let x = centerX + cos(angle) * r;
-                let y = centerY + sin(angle) * r;
+                let x = random(width * 0.2, width * 0.8);
+                let y = random(height * 0.2, height * 0.8);
                 controlPoints.push(new Joint(x, y, true));
             }
         }
