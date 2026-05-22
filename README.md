@@ -10,6 +10,29 @@ Notes:
 - A single higher-order Bezier curve is not the way to go! All those control points smooth out the curve too much and make the animation boring.
 - Mystify is technically 2 separate curves with 4 control points each... but I was trying to show the connection lol
 
+# macOS Screensaver
+
+The `screensaver/` directory contains everything needed to build and install a native macOS `.saver` bundle.
+
+**Requirements:** macOS 12+, Xcode Command Line Tools (`xcode-select --install`)
+
+```bash
+cd screensaver
+
+# Build, install, and open System Settings → Screen Saver
+make open
+
+# Or just build
+make
+
+# Or build and install without opening settings
+make install
+```
+
+`make install` copies `Bezier.saver` to `~/Library/Screen Savers/`. macOS discovers it automatically — open **System Settings → Screen Saver** and select **Bezier**.
+
+> **Note:** macOS may show a security warning the first time. Go to **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -d com.apple.quarantine ~/Library/Screen\ Savers/Bezier.saver` to clear the quarantine flag.
+
 # How It Was Made
 
 I trialed Windsurf IDE with a mix of SWE-1.5 for easy prompts and Claude 4.5 for more complex prompts.
