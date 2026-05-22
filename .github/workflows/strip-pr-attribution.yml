@@ -1,0 +1,35 @@
+name: Strip Claude attribution from PR bodies
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  strip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Strip attribution lines
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          body=$(gh pr view "$PR" -R "$REPO" --json body --jq .body)
+          cleaned=$(printf '%s' "$body" | sed \
+            -e '/claude\.ai\/code\/session/d' \
+            -e '/Co-[Aa]uthored-[Bb]y:.*[Cc]laude/d' \
+            -e '/[Gg]enerated [bw][yi]t*h*.*[Cc]laude/d' \
+            -e '/[[:space:]]*🤖 [Gg]enerated/d' \
+            -e '/^---[[:space:]]*$/d' \
+            | awk 'BEGIN{blank=0} /^$/{blank++; next} {while(blank--)print ""; blank=0; print}')
+          if [ "$body" = "$cleaned" ]; then
+            echo "PR #$PR body already clean"
+            exit 0
+          fi
+          printf '%s' "$cleaned" | gh pr edit "$PR" -R "$REPO" --body-file -
+          echo "Cleaned PR #$PR"
