@@ -12,7 +12,7 @@ Notes:
 
 # How It Was Made
 
-I trialed Windsurf IDE with a mix of SWE-1.5 for easy prompts and Claude 4.5 for more complex prompts.
+I trialed Windsurf IDE with a mix of SWE-1.5 for easy prompts and Claude 4.5 for more complex prompts. Also used Winton.
 
 The prompt with core Bezier curve logic is below:
 
